@@ -8,7 +8,7 @@ RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # アプリケーションのコピー
-COPY main.py .
+COPY . .
 
 # ポートの公開
 EXPOSE 8000

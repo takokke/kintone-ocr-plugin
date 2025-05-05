@@ -12,31 +12,13 @@ import sys
 
 # Lambda用のマングラーを追加
 from mangum import Mangum
+from utils.logging_setup import setup_logging
 
 # Anthropicライブラリ
 import anthropic
 
-# ロギング設定の強化
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    force=True,  # 既存のロギング設定を上書き
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # 明示的に標準出力へ送信
-    ]
-)
-logger = logging.getLogger(__name__)
-# Lambda環境でのロギング設定を確保
-for handler in logger.handlers:
-    handler.setLevel(logging.INFO)
-    
-# ルートロガーにもハンドラを追加
-root_logger = logging.getLogger()
-if not root_logger.handlers:
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
-    root_logger.addHandler(handler)
-
+# ロギングの設定
+logger = setup_logging()
 
 # FastAPIアプリケーションの作成
 app = FastAPI(title="PDF請求書解析API")
@@ -82,7 +64,6 @@ class InvoiceData(BaseModel):
     total_amount: Optional[float] = None
     transactions: List[TransactionItem] = []
 
-print("APIの外です")
 logger.info(f"ロガーのAPIの外きた")
 
 @app.post("/analyze-pdf", response_model=InvoiceData)
@@ -95,7 +76,6 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
     
     try:
 
-        print("APIの中きた (print)")
         logger.info("APIの中きた (logger)")
 
         # PDFファイルの内容を読み込む
@@ -117,9 +97,10 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
         # システムプロンプトの設定
         # キー名の調整の必要あり。
         system_prompt = "あなたはPDF請求書の解析エキスパートです。アップロードされたPDFから以下の情報を抽出してください：" \
-                        "1. 請求総額 (total_amount)" \
-                        "2. 取引明細の各項目 (transactions): 日付、内容、数量、単価、金額、備考" \
-                        "結果はJSON形式で返してください。情報が見つからない場合はnullを返してください。"
+                        "1. 請求総額 (キー名=total_amount)" \
+                        "2. 取引明細の各項目 (キー名=transactions): 日付(キー名=日付, 値: 文字列)、内容(キー名=内容, 値: 文字列)、数量(キー名=数量, 値: 数値)、単価(キー名=単価, 値: 数値)、金額(キー名=金額, 値: 数値)、備考(キー名=備考, 値: 文字列)" \
+                        "結果はJSON形式で返してください。情報が見つからない場合はnullを返してください。" \
+                        "取引明細の各項目は、[日付, 内容, 数量, 単価, 金額, 備考]です。JSONを生成する際に、これ以外のキー名を使わないでください"
         
         # マルチモーダルメッセージの設定
         messages = [
@@ -154,7 +135,6 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
         # レスポンスからコンテンツを取得
         content = response.content[0].text
         logger.info(f"Anthropic APIのレスポンス: {content}")
-        print(f"レスポンスの内容(print): {content}")
         # JSONの部分を抽出
         try:
             # JSONブロックを検出して抽出
@@ -204,7 +184,6 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
 async def health_check():
     """ヘルスチェックエンドポイント"""
     
-    print("ヘルスチェックの中きた (print)")
     logger.info("ヘルスチェックエンドポイントが呼び出されました")
     return {"status": "healthy"}
 

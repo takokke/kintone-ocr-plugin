@@ -1,3 +1,5 @@
+# kintone PDF書類　OCR自動入力プラグイン
+
 
 # Anthropic Messages API only supports text generation.
 LangChainを使うとこのようなエラーが起きたため、公式のanthropicライブラリを代用

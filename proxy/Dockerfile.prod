@@ -8,7 +8,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # アプリケーションをコピー
-COPY main.py .
+COPY . .
 
 # UvicornでFastAPIを起動（Lambda用ハンドラーに対応）
 CMD ["main.handler"]
