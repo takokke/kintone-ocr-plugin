@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import tempfile
 from dotenv import load_dotenv
+import sys
 
 # Lambda用のマングラーを追加
 from mangum import Mangum
@@ -15,9 +16,27 @@ from mangum import Mangum
 # Anthropicライブラリ
 import anthropic
 
-# ロギング設定
-logging.basicConfig(level=logging.INFO)
+# ロギング設定の強化
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True,  # 既存のロギング設定を上書き
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 明示的に標準出力へ送信
+    ]
+)
 logger = logging.getLogger(__name__)
+# Lambda環境でのロギング設定を確保
+for handler in logger.handlers:
+    handler.setLevel(logging.INFO)
+    
+# ルートロガーにもハンドラを追加
+root_logger = logging.getLogger()
+if not root_logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
+
 
 # FastAPIアプリケーションの作成
 app = FastAPI(title="PDF請求書解析API")
@@ -34,9 +53,10 @@ app.add_middleware(
 # Lambda環境では.envファイルは使わず、Lambda環境変数から取得する
 if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
     # Lambda環境の場合は.envファイルを読み込まない
-    pass
+    logger.info("Lambda環境で動作中")
 else:
     # ローカル開発環境の場合は.envファイルを読み込む
+    logger.info("ローカル環境で動作中")
     load_dotenv()
 
 # Anthropic APIのキー（環境変数から取得）
@@ -62,6 +82,9 @@ class InvoiceData(BaseModel):
     total_amount: Optional[float] = None
     transactions: List[TransactionItem] = []
 
+print("APIの外です")
+logger.info(f"ロガーのAPIの外きた")
+
 @app.post("/analyze-pdf", response_model=InvoiceData)
 async def analyze_pdf(pdf_file: UploadFile = File(...)):
     """
@@ -71,6 +94,10 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="PDFファイルのみ対応しています")
     
     try:
+
+        print("APIの中きた (print)")
+        logger.info("APIの中きた (logger)")
+
         # PDFファイルの内容を読み込む
         pdf_content = await pdf_file.read()
         
@@ -88,6 +115,7 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
         logger.info(f"一時PDFファイルを保存: {temp_pdf_path}")
         
         # システムプロンプトの設定
+        # キー名の調整の必要あり。
         system_prompt = "あなたはPDF請求書の解析エキスパートです。アップロードされたPDFから以下の情報を抽出してください：" \
                         "1. 請求総額 (total_amount)" \
                         "2. 取引明細の各項目 (transactions): 日付、内容、数量、単価、金額、備考" \
@@ -126,7 +154,7 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
         # レスポンスからコンテンツを取得
         content = response.content[0].text
         logger.info(f"Anthropic APIのレスポンス: {content}")
-        
+        print(f"レスポンスの内容(print): {content}")
         # JSONの部分を抽出
         try:
             # JSONブロックを検出して抽出
@@ -139,17 +167,19 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
                 # JSONが見つからない場合は全体をパースしてみる
                 invoice_data = json.loads(content)
             
+            logger.info(f"invoice_data: {invoice_data}")
+            
             # モデルに合わせてデータを整形
             formatted_data = InvoiceData(
                 total_amount=invoice_data.get("total_amount"),
                 transactions=[
                     TransactionItem(
-                        date=item.get("date"),
-                        description=item.get("description"),
-                        quantity=item.get("quantity"),
-                        unit_price=item.get("unit_price"),
-                        amount=item.get("amount"),
-                        notes=item.get("notes")
+                        date=item.get("日付"),
+                        description=item.get("内容"),
+                        quantity=item.get("数量"),
+                        unit_price=item.get("単価"),
+                        amount=item.get("金額"),
+                        notes=item.get("備考")
                     ) for item in invoice_data.get("transactions", [])
                 ]
             )
@@ -157,7 +187,8 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
             # 一時ファイルの削除
             if os.path.exists(temp_pdf_path):
                 os.unlink(temp_pdf_path)
-                
+            
+            logger.info(f"返り値: {formatted_data}")
             return formatted_data
             
         except json.JSONDecodeError as e:
@@ -172,6 +203,9 @@ async def analyze_pdf(pdf_file: UploadFile = File(...)):
 @app.get("/health")
 async def health_check():
     """ヘルスチェックエンドポイント"""
+    
+    print("ヘルスチェックの中きた (print)")
+    logger.info("ヘルスチェックエンドポイントが呼び出されました")
     return {"status": "healthy"}
 
 # Lambda用ハンドラー
